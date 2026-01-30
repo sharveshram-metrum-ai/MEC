@@ -1,7 +1,24 @@
 version: '3.8'
 
+# =============================================================================
+# MEC Service - Hybrid Architecture
+# =============================================================================
+# 
+# Architecture:
+#   nginx (gateway) → PostgREST (90% traffic) → PostgreSQL
+#                   → FastAPI (webhooks only)
+#
+# Endpoints:
+#   /api/*      → PostgREST (auto-generated REST API)
+#   /webhooks/* → FastAPI (Stripe, Auth0)
+#   /admin/*    → FastAPI (complex operations)
+#
+# =============================================================================
+
 services:
-  # PostgreSQL Database
+  # ===========================================================================
+  # DATABASE
+  # ===========================================================================
   db:
     image: postgres:15-alpine
     container_name: mec-db
@@ -15,6 +32,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ../database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ../database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+      - ../database/security.sql:/docker-entrypoint-initdb.d/03-security.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mec} -d ${POSTGRES_DB:-mec}"]
       interval: 5s
@@ -22,7 +40,9 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Redis (for caching - optional)
+  # ===========================================================================
+  # REDIS (Caching)
+  # ===========================================================================
   redis:
     image: redis:7-alpine
     container_name: mec-redis
@@ -37,18 +57,70 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # pgAdmin (optional - for database management)
-  # pgadmin:
-  #   image: dpage/pgadmin4:latest
-  #   container_name: mec-pgadmin
-  #   environment:
-  #     PGADMIN_DEFAULT_EMAIL: admin@metrum.ai
-  #     PGADMIN_DEFAULT_PASSWORD: admin
-  #   ports:
-  #     - "5050:80"
-  #   depends_on:
-  #     - db
-  #   restart: unless-stopped
+  # ===========================================================================
+  # POSTGREST (Auto-generated REST API)
+  # ===========================================================================
+  postgrest:
+    image: postgrest/postgrest:v12.0.2
+    container_name: mec-postgrest
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD:-change_me_in_production}@db:5432/${POSTGRES_DB:-mec}
+      PGRST_DB_SCHEMAS: api
+      PGRST_DB_ANON_ROLE: mec_anon
+      PGRST_JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_min_32_chars_long}
+      PGRST_JWT_AUD: mec-service
+      PGRST_SERVER_PORT: 3000
+      PGRST_DB_POOL: 10
+      PGRST_MAX_ROWS: 1000
+      PGRST_LOG_LEVEL: info
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===========================================================================
+  # FASTAPI (Webhooks & Admin)
+  # ===========================================================================
+  fastapi:
+    build:
+      context: ../api
+      dockerfile: Dockerfile
+    container_name: mec-fastapi
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-mec}:${POSTGRES_PASSWORD:-mec_dev_password}@db:5432/${POSTGRES_DB:-mec}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-your_jwt_secret_min_32_chars_long}
+      POSTGREST_URL: http://postgrest:3000
+      STRIPE_API_KEY: ${STRIPE_API_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      AUTH0_DOMAIN: ${AUTH0_DOMAIN:-}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-true}
+    ports:
+      - "8005:8005"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ===========================================================================
+  # NGINX (API Gateway)
+  # ===========================================================================
+  nginx:
+    build:
+      context: ../nginx
+      dockerfile: Dockerfile
+    container_name: mec-gateway
+    ports:
+      - "${GATEWAY_PORT:-8000}:80"
+    depends_on:
+      - postgrest
+      - fastapi
+    restart: unless-stopped
 
 volumes:
   postgres_data:

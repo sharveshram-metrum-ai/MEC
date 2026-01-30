@@ -2,110 +2,165 @@
 
 A production-ready microservice for consumption tracking, entitlement management, and access control.
 
-## Overview
+## Architecture: Hybrid (PostgREST + FastAPI)
 
-MEC provides three core capabilities:
-
-| Layer | Component | Purpose |
-|-------|-----------|---------|
-| **Layer 1** | Metering | Append-only consumption ledger |
-| **Layer 2** | Entitlements | Quotas, limits, and plans |
-| **Layer 3** | Controls | Real-time allow/deny decisions |
-
-## Features
-
-- **Usage Tracking** - Record consumption with idempotency
-- **Flexible Licensing** - Time-based, usage-based, seat-based, inventory limits
-- **Commercial Plans** - Starter, Pro, Enterprise tiers
-- **Concurrency Control** - Floating/named user seats
-- **Overage Billing** - Allow usage beyond limits with billing flags
-- **Audit Trail** - Full history for compliance
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    nginx (API Gateway)                       │
+│              Routing, Rate Limiting, Caching                 │
+└─────────────────────────────────────────────────────────────┘
+                │                           │
+                ▼                           ▼
+┌───────────────────────────┐   ┌─────────────────────────────┐
+│       PostgREST           │   │        FastAPI              │
+│   (90% of traffic)        │   │    (Webhooks & Admin)       │
+│                           │   │                             │
+│   /api/accounts           │   │   /webhooks/stripe          │
+│   /api/entitlements       │   │   /webhooks/auth0           │
+│   /api/rpc/check_entitlement│   │   /admin/bulk-provision     │
+│   /api/rpc/meter_consumption│   │   /admin/sync-usage         │
+└───────────────────────────┘   └─────────────────────────────┘
+                │                           │
+                └───────────┬───────────────┘
+                            ▼
+                ┌─────────────────────┐
+                │     PostgreSQL      │
+                │   (Business Logic)  │
+                └─────────────────────┘
+```
 
 ## Quick Start
 
-### 1. Start Database
-
 ```bash
+# 1. Configure environment
+cp .env.example .env
+# Edit .env with your settings
+
+# 2. Start all services
 cd docker
 docker-compose up -d
+
+# 3. Wait for initialization (~30 seconds)
+docker-compose logs -f db
+
+# 4. Test the API
+curl http://localhost:8000/health
+curl http://localhost:8000/api/plans
 ```
 
-This starts PostgreSQL with the schema and seed data automatically loaded.
+## API Endpoints
 
-### 2. Verify Setup
+### Main API (PostgREST) - `/api/`
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/accounts` | GET | List accounts |
+| `/api/entitlements` | GET | List entitlements |
+| `/api/active_entitlements` | GET | Currently active entitlements |
+| `/api/consumption` | GET | Usage history |
+| `/api/plans` | GET | Available plans |
+| `/api/rpc/check_entitlement` | POST | Check if action allowed |
+| `/api/rpc/meter_consumption` | POST | Record usage |
+| `/api/rpc/acquire_lease` | POST | Get concurrency slot |
+| `/api/rpc/release_lease` | POST | Release slot |
+| `/api/rpc/provision_plan` | POST | Assign plan to account |
+
+### Webhooks (FastAPI) - `/webhooks/`
+
+| Endpoint | Description |
+|----------|-------------|
+| `/webhooks/stripe` | Stripe subscription events |
+| `/webhooks/auth0` | Auth0 user events |
+
+### Admin (FastAPI) - `/admin/`
+
+| Endpoint | Description |
+|----------|-------------|
+| `/admin/bulk-provision` | Provision multiple accounts |
+| `/admin/sync-usage-to-stripe` | Report usage to billing |
+| `/admin/expire-stale-leases` | Cleanup job |
+
+## Example Usage
+
+### Check Entitlement
 
 ```bash
-# Connect to database
-docker exec -it mec-db psql -U mec -d mec
+curl -X POST http://localhost:8000/api/rpc/check_entitlement \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JWT" \
+  -d '{
+    "p_account_id": "uuid-here",
+    "p_resource_type": "benchmark_runs",
+    "p_requested_qty": 1
+  }'
+```
 
-# Check tables exist
-\dt
+Response:
+```json
+{
+  "decision": "allow",
+  "reason": "Within entitlement",
+  "quantity_allowed": 100,
+  "quantity_used": 45,
+  "quantity_remaining": 55,
+  "percent_used": 45.0
+}
+```
 
-# Test a function
-SELECT * FROM fn_check_entitlement(
-    uuid_generate_v4(), 
-    'benchmark_runs'
-);
+### Record Consumption
+
+```bash
+curl -X POST http://localhost:8000/api/rpc/meter_consumption \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $JWT" \
+  -d '{
+    "p_idempotency_key": "run_12345",
+    "p_account_id": "uuid-here",
+    "p_resource_type": "benchmark_runs",
+    "p_quantity": 1
+  }'
 ```
 
 ## Project Structure
 
 ```
 mec-service/
+├── api/                    # FastAPI (webhooks & admin)
+│   ├── app/
+│   │   ├── routers/
+│   │   │   ├── webhooks.py
+│   │   │   ├── admin.py
+│   │   │   └── health.py
+│   │   └── config.py
+│   ├── main.py
+│   └── Dockerfile
 ├── database/
-│   ├── schema.sql       # Full DDL (tables, functions, triggers)
-│   └── seed.sql         # Lookup data and sample plans
+│   ├── schema.sql          # Tables, views, functions
+│   ├── seed.sql            # Lookup data, sample plans
+│   └── security.sql        # Roles, RLS policies
 ├── docker/
-│   └── docker-compose.yml
+│   └── docker-compose.yml  # All services
+├── nginx/
+│   ├── nginx.conf          # API gateway routing
+│   └── Dockerfile
+├── postgrest/
+│   ├── postgrest.conf      # PostgREST config
+│   └── Dockerfile
 ├── docs/
 │   ├── LICENSING_MODELS_GUIDE.md
 │   └── POSTGREST_PROPOSAL.md
-├── .env.example
-└── README.md
+└── .env.example
 ```
 
-## API Layer (Pending Decision)
+## Services
 
-Architecture decision pending between:
-- **Option A**: Pure FastAPI
-- **Option B**: Hybrid (PostgREST + FastAPI)
-
-See `docs/POSTGREST_PROPOSAL.md` for details.
-
-## Database Functions
-
-| Function | Description |
-|----------|-------------|
-| `fn_check_entitlement()` | Check if action is allowed |
-| `fn_acquire_lease()` | Acquire concurrency lease |
-| `fn_release_lease()` | Release a lease |
-| `fn_heartbeat_lease()` | Extend lease expiry |
-| `fn_meter_consumption()` | Record usage event |
-| `fn_provision_plan_entitlements()` | Create entitlements from plan |
-
-## Supported Licensing Models
-
-- **Time-based**: Trials, subscriptions, annual licenses
-- **Usage-based**: Pay-as-you-go, tiered pricing, overage
-- **Seat-based**: Named users, floating/concurrent users
-- **Inventory**: Server configs, AI models, etc.
-- **Hybrid**: Combine any of the above
-
-See `docs/LICENSING_MODELS_GUIDE.md` for examples.
-
-## Configuration
-
-Copy `.env.example` to `.env` and configure:
-
-```bash
-cp .env.example .env
-# Edit .env with your values
-```
-
-Key settings:
-- `DATABASE_URL` - PostgreSQL connection
-- `JWT_SECRET` - For authentication
-- `REDIS_URL` - For caching (optional)
+| Service | Port | Purpose |
+|---------|------|---------|
+| nginx | 8000 | API Gateway |
+| postgrest | 3000 | REST API (internal) |
+| fastapi | 8005 | Webhooks (internal) |
+| postgres | 5432 | Database |
+| redis | 6379 | Caching |
 
 ## Development
 
@@ -114,19 +169,35 @@ Key settings:
 cd docker && docker-compose up -d
 
 # View logs
-docker-compose logs -f db
+docker-compose logs -f
 
 # Reset database
 docker-compose down -v
 docker-compose up -d
+
+# Direct database access
+docker exec -it mec-db psql -U mec -d mec
 ```
+
+## Authentication
+
+PostgREST uses JWT for authentication. Include token in header:
+
+```
+Authorization: Bearer <jwt_token>
+```
+
+JWT must contain:
+- `role`: One of `mec_user`, `mec_service`, `mec_admin`
+- `namespace_id`: Tenant identifier (for RLS)
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [LICENSING_MODELS_GUIDE.md](docs/LICENSING_MODELS_GUIDE.md) | All pricing scenarios with SQL examples |
-| [POSTGREST_PROPOSAL.md](docs/POSTGREST_PROPOSAL.md) | API architecture decision |
+| [LICENSING_MODELS_GUIDE.md](docs/LICENSING_MODELS_GUIDE.md) | Pricing scenarios with SQL |
+| [POSTGREST_PROPOSAL.md](docs/POSTGREST_PROPOSAL.md) | Architecture decision |
+| [database/README.md](database/README.md) | Schema documentation |
 
 ## License
 

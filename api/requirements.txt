@@ -1,0 +1,29 @@
+# MEC FastAPI - Webhooks & Admin Service
+# Minimal dependencies for hybrid architecture
+
+# Web framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Database (for webhook processing)
+asyncpg==0.29.0
+sqlalchemy[asyncio]==2.0.25
+
+# HTTP client (for external APIs)
+httpx==0.26.0
+
+# Validation
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Security
+python-jose[cryptography]==3.3.0
+
+# Stripe webhooks
+stripe==7.12.0
+
+# Redis (optional caching)
+redis==5.0.1
+
+# Logging
+structlog==24.1.0
