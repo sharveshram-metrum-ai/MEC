@@ -102,6 +102,7 @@ SELECT
     e.effective_start,
     e.effective_end,
     e.window_type_code,
+    e.window_anchor,
     e.plan_id,
     e.priority,
     e.status,
@@ -311,7 +312,9 @@ CREATE OR REPLACE FUNCTION api.provision_plan(
     p_start_date TIMESTAMPTZ DEFAULT NOW()
 )
 RETURNS INT
-LANGUAGE plpgsql SECURITY DEFINER
+LANGUAGE plpgsql 
+SECURITY DEFINER
+SET search_path = public, api
 AS $$
 BEGIN
     RETURN public.fn_provision_plan_entitlements(p_account_id, p_plan_id, p_start_date);
@@ -341,12 +344,53 @@ END;
 $$;
 
 -- ============================================================================
--- GRANTS - Anonymous (very limited)
+-- GRANTS - Anonymous (for demo/development - restrict in production)
 -- ============================================================================
 
 GRANT USAGE ON SCHEMA api TO mec_anon;
+
+-- Read access to lookup tables
 GRANT SELECT ON api.plans TO mec_anon;
 GRANT SELECT ON api.resource_types TO mec_anon;
+GRANT SELECT ON api.accounts TO mec_anon;
+GRANT SELECT ON api.entitlements TO mec_anon;
+GRANT SELECT ON api.active_entitlements TO mec_anon;
+GRANT SELECT ON api.consumption TO mec_anon;
+GRANT SELECT ON api.active_leases TO mec_anon;
+GRANT SELECT ON api.control_decisions TO mec_anon;
+
+-- Write access (for demo - consider restricting in production)
+GRANT INSERT ON api.accounts TO mec_anon;
+GRANT INSERT ON public.accounts TO mec_anon;
+GRANT INSERT ON public.entitlements TO mec_anon;
+GRANT INSERT ON public.consumption_ledger TO mec_anon;
+GRANT INSERT ON public.concurrency_leases TO mec_anon;
+GRANT UPDATE ON public.concurrency_leases TO mec_anon;
+
+-- Function access for demo
+GRANT EXECUTE ON FUNCTION api.check_entitlement TO mec_anon;
+GRANT EXECUTE ON FUNCTION api.meter_consumption TO mec_anon;
+GRANT EXECUTE ON FUNCTION api.acquire_lease TO mec_anon;
+GRANT EXECUTE ON FUNCTION api.release_lease TO mec_anon;
+GRANT EXECUTE ON FUNCTION api.heartbeat_lease TO mec_anon;
+GRANT EXECUTE ON FUNCTION api.get_usage TO mec_anon;
+GRANT EXECUTE ON FUNCTION api.provision_plan TO mec_anon;
+
+-- Read access to underlying tables (needed for functions)
+GRANT SELECT ON public.accounts TO mec_anon;
+GRANT SELECT ON public.entitlements TO mec_anon;
+GRANT SELECT ON public.consumption_ledger TO mec_anon;
+GRANT SELECT ON public.concurrency_leases TO mec_anon;
+GRANT SELECT ON public.plans TO mec_anon;
+GRANT SELECT ON public.plan_entitlement_templates TO mec_anon;
+GRANT SELECT ON public.resource_types TO mec_anon;
+GRANT SELECT ON public.resource_type_allowed_units TO mec_anon;
+GRANT SELECT ON public.units TO mec_anon;
+GRANT SELECT ON public.control_rules TO mec_anon;
+GRANT SELECT ON public.window_types TO mec_anon;
+GRANT SELECT ON public.limit_kinds TO mec_anon;
+GRANT SELECT ON public.account_types TO mec_anon;
+GRANT INSERT ON public.entitlements_audit TO mec_anon;
 
 -- ============================================================================
 -- GRANTS - Authenticated Users

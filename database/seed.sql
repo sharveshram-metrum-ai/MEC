@@ -47,18 +47,18 @@ INSERT INTO limit_actions (limit_action_code, description) VALUES
 -- ============================================================================
 
 INSERT INTO resource_types (resource_type_code, namespace_id, description, default_unit_code, is_inventory, is_concurrency, is_time_bound) VALUES
-    ('platform_access', 'metrum-insights', 'Access to the platform', 'days', FALSE, FALSE, TRUE),
-    ('concurrent_users', 'metrum-insights', 'Floating user seats', 'count', FALSE, TRUE, FALSE),
-    ('named_users', 'metrum-insights', 'Named user seats', 'count', TRUE, FALSE, FALSE),
-    ('benchmark_runs', 'metrum-insights', 'Benchmark executions', 'count', FALSE, FALSE, FALSE),
-    ('gpu_hours', 'metrum-insights', 'GPU compute time', 'hours', FALSE, FALSE, FALSE),
-    ('server_configs', 'metrum-insights', 'Server configurations', 'count', TRUE, FALSE, FALSE),
-    ('server_instances', 'metrum-insights', 'Server instances', 'count', TRUE, FALSE, FALSE),
-    ('ai_models', 'metrum-insights', 'Registered AI models', 'count', TRUE, FALSE, FALSE),
-    ('api_requests', 'metrum-insights', 'API calls', 'requests', FALSE, FALSE, FALSE),
-    ('reports_generated', 'metrum-insights', 'Generated reports', 'count', FALSE, FALSE, FALSE),
-    ('concurrent_jobs', 'metrum-insights', 'Concurrent benchmark jobs', 'count', FALSE, TRUE, FALSE),
-    ('llm_tokens', 'metrum-insights', 'LLM tokens consumed', 'tokens', FALSE, FALSE, FALSE);
+    ('platform_access', 'default', 'Access to the platform', 'days', FALSE, FALSE, TRUE),
+    ('concurrent_users', 'default', 'Floating user seats', 'count', FALSE, TRUE, FALSE),
+    ('named_users', 'default', 'Named user seats', 'count', TRUE, FALSE, FALSE),
+    ('benchmark_runs', 'default', 'Benchmark executions', 'count', FALSE, FALSE, FALSE),
+    ('gpu_hours', 'default', 'GPU compute time', 'hours', FALSE, FALSE, FALSE),
+    ('server_configs', 'default', 'Server configurations', 'count', TRUE, FALSE, FALSE),
+    ('server_instances', 'default', 'Server instances', 'count', TRUE, FALSE, FALSE),
+    ('ai_models', 'default', 'Registered AI models', 'count', TRUE, FALSE, FALSE),
+    ('api_requests', 'default', 'API calls', 'requests', FALSE, FALSE, FALSE),
+    ('reports_generated', 'default', 'Generated reports', 'count', FALSE, FALSE, FALSE),
+    ('concurrent_jobs', 'default', 'Concurrent benchmark jobs', 'count', FALSE, TRUE, FALSE),
+    ('llm_tokens', 'default', 'LLM tokens consumed', 'tokens', FALSE, FALSE, FALSE);
 
 -- Allowed units for each resource type
 INSERT INTO resource_type_allowed_units (resource_type_code, unit_code) VALUES
@@ -83,10 +83,10 @@ INSERT INTO resource_type_allowed_units (resource_type_code, unit_code) VALUES
 -- ============================================================================
 
 INSERT INTO plans (plan_id, namespace_id, plan_name, description, is_trial, trial_days, status) VALUES
-    ('trial-14d', 'metrum-insights', '14-Day Free Trial', 'Full access for 14 days', TRUE, 14, 'active'),
-    ('starter', 'metrum-insights', 'Starter', 'For small teams getting started', FALSE, NULL, 'active'),
-    ('pro', 'metrum-insights', 'Pro', 'For growing teams', FALSE, NULL, 'active'),
-    ('enterprise', 'metrum-insights', 'Enterprise', 'Custom enterprise solution', FALSE, NULL, 'active');
+    ('trial-14d', 'default', '14-Day Free Trial', 'Full access for 14 days', TRUE, 14, 'active'),
+    ('starter', 'default', 'Starter', 'For small teams getting started', FALSE, NULL, 'active'),
+    ('pro', 'default', 'Pro', 'For growing teams', FALSE, NULL, 'active'),
+    ('enterprise', 'default', 'Enterprise', 'Custom enterprise solution', FALSE, NULL, 'active');
 
 -- Trial plan templates
 INSERT INTO plan_entitlement_templates (plan_id, resource_type_code, limit_kind_code, quantity_allowed, unit_code, window_type_code, duration_days) VALUES
@@ -125,9 +125,9 @@ INSERT INTO plan_entitlement_templates (plan_id, resource_type_code, limit_kind_
 -- ============================================================================
 
 INSERT INTO control_rules (namespace_id, rule_name, resource_type_code, limit_kind_code, limit_action_code, warn_at_percent, is_active) VALUES
-    ('metrum-insights', 'Default benchmark warning', 'benchmark_runs', 'cumulative', 'block', 80.00, TRUE),
-    ('metrum-insights', 'Default GPU hours warning', 'gpu_hours', 'cumulative', 'block', 80.00, TRUE),
-    ('metrum-insights', 'Concurrent users soft limit', 'concurrent_users', 'concurrency', 'block', 90.00, TRUE);
+    ('default', 'Default benchmark warning', 'benchmark_runs', 'cumulative', 'block', 80.00, TRUE),
+    ('default', 'Default GPU hours warning', 'gpu_hours', 'cumulative', 'block', 80.00, TRUE),
+    ('default', 'Concurrent users soft limit', 'concurrent_users', 'concurrency', 'block', 90.00, TRUE);
 
 -- ============================================================================
 -- VERIFICATION QUERIES
