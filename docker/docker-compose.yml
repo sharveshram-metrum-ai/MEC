@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: mec-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mec}
+      POSTGRES_USER: ${POSTGRES_USER:-mec}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mec_dev_password}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ../database/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mec} -d ${POSTGRES_DB:-mec}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis (for caching - optional)
+  redis:
+    image: redis:7-alpine
+    container_name: mec-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # pgAdmin (optional - for database management)
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: mec-pgadmin
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@metrum.ai
+  #     PGADMIN_DEFAULT_PASSWORD: admin
+  #   ports:
+  #     - "5050:80"
+  #   depends_on:
+  #     - db
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  default:
+    name: mec-network
